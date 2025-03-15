@@ -1,0 +1,11 @@
+# ~/projects/Logichem/ansible-dokploy-erpnext/setup.yml
+- name: Configure Ubuntu Server
+  hosts: erptest
+  become: yes
+  tasks:
+    - name: Update package lists
+      apt:
+        update_cache: yes
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
