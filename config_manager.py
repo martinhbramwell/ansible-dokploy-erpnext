@@ -8,7 +8,7 @@ CONFIG_FILE = os.path.join(USER_HOME, "projects/Logichem/ansible-dokploy-erpnext
 def load_config():
     """Loads the configuration file or returns an empty default structure."""
     if not os.path.exists(CONFIG_FILE):
-        save_config({"targets": []})  # Ensure the file exists
+        save_config({"targets": []})
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
@@ -19,7 +19,12 @@ def save_config(config):
         json.dump(config, f, indent=4)
 
 def edit_config(config):
-    """Allows the user to modify configuration interactively."""
+    """
+    Allows the user to modify configuration interactively.
+    Non-secret data (host alias, IP, SSH user, etc.) are stored in the config file.
+    Sudo passwords are stored securely in the vault.
+    When adding or editing a host, the user is prompted to set or update the sudo password.
+    """
     while True:
         print("\nCurrent Targets:")
         for i, target in enumerate(config.get("targets", []), start=1):
@@ -28,7 +33,6 @@ def edit_config(config):
         print("N. Add a new target")
 
         choice = input("Enter number to edit, 0 to continue, or N to add a target: ").strip().lower()
-        
         if choice == "0":
             break
         elif choice == "n":
@@ -40,6 +44,10 @@ def edit_config(config):
                 "identity_file": input("Enter SSH identity file name (default id_rsa): ").strip() or "id_rsa"
             }
             config["targets"].append(new_target)
+            update_choice = input(f"Do you want to set the sudo password for '{new_target['host_alias']}' now? (y/N): ").strip().lower()
+            if update_choice == 'y':
+                from vault_manager import setup_vault_for_target
+                setup_vault_for_target(new_target)
         else:
             try:
                 index = int(choice) - 1
@@ -50,7 +58,11 @@ def edit_config(config):
                 target["ssh_user"] = input(f"Enter SSH username [{target['ssh_user']}]: ").strip() or target["ssh_user"]
                 target["ssh_port"] = input(f"Enter SSH port [{target['ssh_port']}]: ").strip() or target["ssh_port"]
                 target["identity_file"] = input(f"Enter SSH identity file name [{target['identity_file']}]: ").strip() or target["identity_file"]
+                update_choice = input(f"Do you want to update the sudo password for '{target['host_alias']}'? (y/N): ").strip().lower()
+                if update_choice == 'y':
+                    from vault_manager import update_vault_for_target
+                    update_vault_for_target(target)
             except (ValueError, IndexError):
                 print("Invalid selection, try again.")
-    
+
     return config

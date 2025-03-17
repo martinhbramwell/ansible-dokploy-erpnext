@@ -1,5 +1,6 @@
 import os
 import subprocess
+import tempfile
 
 # Use current user's home directory
 USER_HOME = os.path.expanduser("~")
@@ -38,17 +39,45 @@ Host {target['host_alias']}
     print(f"Added SSH alias '{target['host_alias']}' to {SSH_CONFIG_FILE}")
 
 def push_ssh_key(target):
-    """Uses sshpass to push the SSH key to the target."""
+    """Uses sshpass to push the SSH key to the target.
+    
+    The sudo (or SSH) password for the target is obtained from the vault.
+    A temporary file is created to hold the password for use with sshpass,
+    and is deleted immediately after use.
+    """
     print(f"Pushing SSH key to {target['host_alias']}...")
-    sshpass_file = os.path.join(USER_HOME, ".ssh", "secrets", "sshpass.txt")
+    
+    # Obtain the sudo password for this target from the vault.
+    # We import the load_vault_data() function from vault_manager.
+    try:
+        from vault_manager import load_vault_data
+    except ImportError:
+        print("Error: Could not import vault_manager.")
+        return
 
-    push_key_cmd = [
-        "sshpass", "-f", sshpass_file,
-        "ssh-copy-id", "-o", "StrictHostKeyChecking=no",
-        "-i", os.path.join(USER_HOME, ".ssh", f"{target['identity_file']}.pub"),
-        f"{target['ssh_user']}@{target['host_ip_or_name']}"
-    ]
-    subprocess.run(push_key_cmd, check=True)
+    vault_data = load_vault_data()
+    key = target.get("host_alias", target.get("host_ip_or_name"))
+    if key not in vault_data:
+        print(f"Error: No password for '{key}' found in the vault.")
+        return
+    sudo_password = vault_data[key]
+    
+    # Create a temporary file containing the password.
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as temp_file:
+        temp_file.write(sudo_password)
+        temp_file.flush()
+        temp_name = temp_file.name
+
+    try:
+        push_key_cmd = [
+            "sshpass", "-f", temp_name,
+            "ssh-copy-id", "-o", "StrictHostKeyChecking=no",
+            "-i", os.path.join(USER_HOME, ".ssh", f"{target['identity_file']}.pub"),
+            f"{target['ssh_user']}@{target['host_ip_or_name']}"
+        ]
+        subprocess.run(push_key_cmd, check=True)
+    finally:
+        os.remove(temp_name)
 
 def setup_ssh_access(target, configure=False):
     """Handles SSH setup, only configuring if needed."""

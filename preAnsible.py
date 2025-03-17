@@ -5,7 +5,6 @@ import sys
 from env_validator import validate_environment
 from config_manager import load_config, save_config, edit_config
 from ssh_manager import setup_ssh_access, check_ssh_access
-from vault_manager import setup_vault_for_target
 from host_manager import update_hosts_file
 
 # Use current user's home directory
@@ -14,19 +13,16 @@ USER_HOME = os.path.expanduser("~")
 # Set the project directory based on the current user's home
 PROJECT_DIR = os.path.join(USER_HOME, "projects/Logichem/ansible-dokploy-erpnext")
 
-# Validate environment dependencies (e.g., sshpass, SUDO_ASKPASS, sudo -A)
+# Validate environment dependencies (sshpass, SUDO_ASKPASS, sudo -A, PyYAML)
 validate_environment()
 
-# Load, interactively edit, and save configuration
+# Load, interactively edit, and save configuration.
+# (Interactive editing now lets you update a host’s sudo password in the vault.)
 config = load_config()
 config = edit_config(config)
 save_config(config)
 
-# For each target, ensure its sudo password is recorded in the vault.
-for target in config.get("targets", []):
-    setup_vault_for_target(target)
-
-# Process each target defined in the configuration
+# Process each target defined in the configuration.
 for target in config.get("targets", []):
     print(f"\nProcessing target: {target['host_alias']} ({target['host_ip_or_name']})")
 

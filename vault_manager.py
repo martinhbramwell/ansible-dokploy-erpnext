@@ -45,10 +45,8 @@ def load_vault_data():
 def write_and_encrypt_vault(data):
     """Write the YAML data to VAULT_FILE in plaintext then encrypt it using ansible-vault."""
     os.makedirs(os.path.dirname(VAULT_FILE), exist_ok=True)
-    # Write YAML data to file in plaintext
     with open(VAULT_FILE, "w") as f:
         yaml.dump(data, f, default_flow_style=False)
-    # Encrypt the vault file using ansible-vault
     encrypt_cmd = [
         "ansible-vault", "encrypt", VAULT_FILE, "--encrypt-vault-id", "default",
         "--vault-password-file", VAULT_PASS_FILE
@@ -62,18 +60,39 @@ def write_and_encrypt_vault(data):
 
 def setup_vault_for_target(target):
     """
-    For the given target, checks if its sudo password is recorded in the vault.
-    If not, prompts the user for the password, then records it as a key/value pair
-    (with the key being the target's host alias or IP) in the vault file.
+    For the given target, check if its sudo password is recorded in the vault.
+    If not present, prompt the user to add it.
     """
     ensure_vault_password()
     vault_data = load_vault_data()
 
-    # Use the host alias if available, otherwise use host IP/name.
+    # Use host_alias if available; otherwise, use host_ip_or_name as key.
     key = target.get("host_alias", target.get("host_ip_or_name"))
     if key in vault_data:
         print(f"Sudo password for '{key}' already exists in the vault.")
-    else:
+        print("If you wish to update it, please use the update option.")
+        return
+
+    sudo_password = getpass.getpass(f"Enter sudo password for target '{key}': ")
+    vault_data[key] = sudo_password
+    write_and_encrypt_vault(vault_data)
+
+def update_vault_for_target(target):
+    """
+    For the given target, update the sudo password in the vault.
+    This function decrypts the vault, prompts for a replacement password,
+    overwrites the existing record, and re-encrypts the file.
+    """
+    ensure_vault_password()
+    vault_data = load_vault_data()
+
+    key = target.get("host_alias", target.get("host_ip_or_name"))
+    if key not in vault_data:
+        print(f"No existing sudo password for '{key}' found. Adding new record.")
         sudo_password = getpass.getpass(f"Enter sudo password for target '{key}': ")
         vault_data[key] = sudo_password
-        write_and_encrypt_vault(vault_data)
+    else:
+        new_password = getpass.getpass(f"Enter new sudo password for target '{key}': ")
+        vault_data[key] = new_password
+
+    write_and_encrypt_vault(vault_data)
