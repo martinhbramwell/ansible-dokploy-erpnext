@@ -2,14 +2,26 @@ import os
 import json
 import pwd
 
-# Use USER_HOME from the environment (set in preAnsible.py)
+# Determine the sudoer user's home directory and UID/GID
 user_home = os.environ.get("USER_HOME")
 if not user_home:
     sudo_user = os.getenv("SUDO_USER")
     if sudo_user:
-        user_home = pwd.getpwnam(sudo_user).pw_dir
+        user_info = pwd.getpwnam(sudo_user)
+        user_home = user_info.pw_dir
+        SUDO_UID = user_info.pw_uid
+        SUDO_GID = user_info.pw_gid
     else:
         user_home = os.path.expanduser("~")
+        SUDO_UID, SUDO_GID = os.getuid(), os.getgid()
+else:
+    sudo_user = os.getenv("SUDO_USER")
+    if sudo_user:
+        user_info = pwd.getpwnam(sudo_user)
+        SUDO_UID = user_info.pw_uid
+        SUDO_GID = user_info.pw_gid
+    else:
+        SUDO_UID, SUDO_GID = os.getuid(), os.getgid()
 
 CONFIG_FILE = os.path.join(user_home, "projects/Logichem/ansible-dokploy-erpnext", "setup_config.json")
 
@@ -21,9 +33,10 @@ def load_config():
         return json.load(f)
 
 def save_config(config):
-    """Saves the configuration back to the file."""
+    """Saves the configuration back to the file and sets ownership to the sudoer user."""
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=4)
+    os.chown(CONFIG_FILE, SUDO_UID, SUDO_GID)
 
 def edit_config(config):
     """Allows the user to modify configuration interactively."""
