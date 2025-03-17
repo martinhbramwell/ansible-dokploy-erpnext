@@ -1,7 +1,17 @@
 import os
 import json
+import pwd
 
-CONFIG_FILE = os.path.expanduser("~/projects/Logichem/ansible-dokploy-erpnext/setup_config.json")
+# Use USER_HOME from the environment (set in preAnsible.py)
+user_home = os.environ.get("USER_HOME")
+if not user_home:
+    sudo_user = os.getenv("SUDO_USER")
+    if sudo_user:
+        user_home = pwd.getpwnam(sudo_user).pw_dir
+    else:
+        user_home = os.path.expanduser("~")
+
+CONFIG_FILE = os.path.join(user_home, "projects/Logichem/ansible-dokploy-erpnext", "setup_config.json")
 
 def load_config():
     """Loads the configuration file or returns an empty default structure."""

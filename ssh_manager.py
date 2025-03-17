@@ -1,7 +1,17 @@
 import os
 import subprocess
+import pwd
 
-SSH_CONFIG_FILE = os.path.expanduser("~/.ssh/config")
+# Use USER_HOME from environment or compute it
+user_home = os.environ.get("USER_HOME")
+if not user_home:
+    sudo_user = os.getenv("SUDO_USER")
+    if sudo_user:
+        user_home = pwd.getpwnam(sudo_user).pw_dir
+    else:
+        user_home = os.path.expanduser("~")
+
+SSH_CONFIG_FILE = os.path.join(user_home, ".ssh", "config")
 
 def check_ssh_access(target):
     """Checks if SSH access is already set up for the target."""
@@ -13,7 +23,7 @@ def check_ssh_access(target):
     return result.returncode == 0
 
 def add_ssh_alias(target):
-    """Adds an SSH alias to ~/.ssh/config if it doesn't already exist."""
+    """Adds an SSH alias to SSH_CONFIG_FILE if it doesn't already exist."""
     if os.path.exists(SSH_CONFIG_FILE):
         with open(SSH_CONFIG_FILE, "r") as ssh_config:
             if f"Host {target['host_alias']}" in ssh_config.read():
@@ -27,9 +37,10 @@ Host {target['host_alias']}
     HostName {target['host_ip_or_name']}
     ServerAliveInterval 120
     ServerAliveCountMax 20
-    IdentityFile ~/.ssh/{target['identity_file']}
+    IdentityFile {os.path.join(user_home, ".ssh", target['identity_file'])}
 # Alias configuration: {target['host_alias']}
 """
+    os.makedirs(os.path.dirname(SSH_CONFIG_FILE), exist_ok=True)
     with open(SSH_CONFIG_FILE, "a") as ssh_config:
         ssh_config.write(ssh_config_entry)
         print(f"Added SSH alias '{target['host_alias']}' to {SSH_CONFIG_FILE}")
@@ -37,12 +48,12 @@ Host {target['host_alias']}
 def push_ssh_key(target):
     """Uses sshpass to push the SSH key to the target."""
     print(f"Pushing SSH key to {target['host_alias']}...")
-    sshpass_file = os.path.expanduser("~/.ssh/secrets/sshpass.txt")
+    sshpass_file = os.path.join(user_home, ".ssh", "secrets", "sshpass.txt")
 
     push_key_cmd = [
         "sshpass", "-f", sshpass_file,
         "ssh-copy-id", "-o", "StrictHostKeyChecking=no",
-        "-i", f"~/.ssh/{target['identity_file']}.pub",
+        "-i", os.path.join(user_home, ".ssh", f"{target['identity_file']}.pub"),
         f"{target['ssh_user']}@{target['host_ip_or_name']}"
     ]
     subprocess.run(push_key_cmd, check=True)
