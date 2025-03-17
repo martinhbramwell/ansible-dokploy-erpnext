@@ -2,67 +2,78 @@ import os
 import getpass
 import subprocess
 import sys
-import pwd
+import yaml
 
-# Determine the sudoer user's home directory and UID/GID
-user_home = os.environ.get("USER_HOME")
-if not user_home:
-    sudo_user = os.getenv("SUDO_USER")
-    if sudo_user:
-        user_info = pwd.getpwnam(sudo_user)
-        user_home = user_info.pw_dir
-        SUDO_UID = user_info.pw_uid
-        SUDO_GID = user_info.pw_gid
-    else:
-        user_home = os.path.expanduser("~")
-        SUDO_UID, SUDO_GID = os.getuid(), os.getgid()
-else:
-    sudo_user = os.getenv("SUDO_USER")
-    if sudo_user:
-        user_info = pwd.getpwnam(sudo_user)
-        SUDO_UID = user_info.pw_uid
-        SUDO_GID = user_info.pw_gid
-    else:
-        SUDO_UID, SUDO_GID = os.getuid(), os.getgid()
-
-SECRETS_DIR = os.path.join(user_home, ".ssh", "secrets")
+# Use current user's home directory
+USER_HOME = os.path.expanduser("~")
+SECRETS_DIR = os.path.join(USER_HOME, ".ssh", "secrets")
 VAULT_PASS_FILE = os.path.join(SECRETS_DIR, ".vault_pass")
 SSHPASS_FILE = os.path.join(SECRETS_DIR, "sshpass.txt")
-VAULT_FILE = os.path.join(user_home, "projects/Logichem/ansible-dokploy-erpnext", "group_vars", "all", "vault.yml")
+VAULT_FILE = os.path.join(
+    USER_HOME,
+    "projects/Logichem/ansible-dokploy-erpnext",
+    "group_vars",
+    "all",
+    "vault.yml"
+)
 
-def setup_vault():
-    """Handles Ansible Vault password storage and encryption of sudo passwords."""
+def ensure_vault_password():
+    """Ensure that the Ansible vault password is stored in VAULT_PASS_FILE."""
     os.makedirs(SECRETS_DIR, exist_ok=True)
+    if not os.path.exists(VAULT_PASS_FILE):
+        vault_password = getpass.getpass("Enter Ansible Vault password: ")
+        with open(VAULT_PASS_FILE, "w") as f:
+            f.write(vault_password + "\n")
+        os.chmod(VAULT_PASS_FILE, 0o600)
 
-    # Prompt for Ansible Vault password and write it to file
-    vault_password = getpass.getpass("Enter Ansible Vault password: ")
-    with open(VAULT_PASS_FILE, "w") as f:
-        f.write(vault_password + "\n")
-    os.chmod(VAULT_PASS_FILE, 0o600)
-    os.chown(VAULT_PASS_FILE, SUDO_UID, SUDO_GID)
+def load_vault_data():
+    """Return a dictionary from vault.yml if it exists, else an empty dict."""
+    if os.path.exists(VAULT_FILE):
+        try:
+            result = subprocess.run(
+                ["ansible-vault", "view", VAULT_FILE, "--vault-password-file", VAULT_PASS_FILE],
+                capture_output=True, text=True, check=True
+            )
+            data = yaml.safe_load(result.stdout)
+            return data if data is not None else {}
+        except subprocess.CalledProcessError as e:
+            print("Error decrypting vault file:", e.stderr)
+            sys.exit(1)
+    else:
+        return {}
 
-    # Prompt for sudo password and write it to file
-    sudo_password = getpass.getpass("Enter sudoer password of target machine user: ")
-    with open(SSHPASS_FILE, "w") as f:
-        f.write(sudo_password + "\n")
-    os.chmod(SSHPASS_FILE, 0o600)
-    os.chown(SSHPASS_FILE, SUDO_UID, SUDO_GID)
-
-    # Write the sudo password in plaintext (temporarily) to the vault file
+def write_and_encrypt_vault(data):
+    """Write the YAML data to VAULT_FILE in plaintext then encrypt it using ansible-vault."""
     os.makedirs(os.path.dirname(VAULT_FILE), exist_ok=True)
+    # Write YAML data to file in plaintext
     with open(VAULT_FILE, "w") as f:
-        f.write(f"ansible_become_pass: {sudo_password}\n")
-    os.chown(VAULT_FILE, SUDO_UID, SUDO_GID)
-
-    # Encrypt the entire vault.yml file
+        yaml.dump(data, f, default_flow_style=False)
+    # Encrypt the vault file using ansible-vault
     encrypt_cmd = [
         "ansible-vault", "encrypt", VAULT_FILE, "--encrypt-vault-id", "default",
         "--vault-password-file", VAULT_PASS_FILE
     ]
     result = subprocess.run(encrypt_cmd, capture_output=True, text=True)
-
-    if result.returncode == 0:
-        print("Vault password stored securely in vault.yml")
-    else:
-        print("Error encrypting password:", result.stderr)
+    if result.returncode != 0:
+        print("Error encrypting vault file:", result.stderr)
         sys.exit(1)
+    else:
+        print("Vault file updated successfully.")
+
+def setup_vault_for_target(target):
+    """
+    For the given target, checks if its sudo password is recorded in the vault.
+    If not, prompts the user for the password, then records it as a key/value pair
+    (with the key being the target's host alias or IP) in the vault file.
+    """
+    ensure_vault_password()
+    vault_data = load_vault_data()
+
+    # Use the host alias if available, otherwise use host IP/name.
+    key = target.get("host_alias", target.get("host_ip_or_name"))
+    if key in vault_data:
+        print(f"Sudo password for '{key}' already exists in the vault.")
+    else:
+        sudo_password = getpass.getpass(f"Enter sudo password for target '{key}': ")
+        vault_data[key] = sudo_password
+        write_and_encrypt_vault(vault_data)
