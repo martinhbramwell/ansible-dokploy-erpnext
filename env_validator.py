@@ -5,7 +5,8 @@ import sys
 
 def validate_environment():
     """Validates that required external dependencies are installed,
-    that SUDO_ASKPASS is defined and executable, and that sudo -A works."""
+    that SUDO_ASKPASS is defined and executable, that sudo -A works
+    (via 'sudo -A ls -l /root'), and that PyYAML is installed."""
     missing = []
 
     # Check for sshpass
@@ -20,18 +21,23 @@ def validate_environment():
         if not (os.path.exists(sudo_askpass) and os.access(sudo_askpass, os.X_OK)):
             missing.append("SUDO_ASKPASS program is not found or not executable")
 
+    # Check for PyYAML installation
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        missing.append("PyYAML (pip install pyyaml)")
+
     if missing:
         print("ERROR: The following dependencies or configurations are missing:")
         for dep in missing:
             print(" -", dep)
         sys.exit(1)
 
-    # Test that "sudo -A" works by running a harmless command in non-interactive mode.
-    # Note: If sudo requires a password even with askpass, the -n flag will cause it to fail.
-    result = subprocess.run(["sudo", "-A", "-n", "true"],
+    # Test that "sudo -A ls -l /root" works.
+    result = subprocess.run(["sudo", "-A", "ls", "-l", "/root"],
                             capture_output=True, text=True)
     if result.returncode != 0:
-        print("ERROR: 'sudo -A' is not working properly. Please check your SUDO_ASKPASS setup and sudoers configuration.")
+        print("ERROR: 'sudo -A ls -l /root' is not working properly. Please check your SUDO_ASKPASS setup and sudoers configuration.")
         sys.exit(1)
 
     print("Environment validation passed: All required dependencies and sudo -A configuration are in place.")

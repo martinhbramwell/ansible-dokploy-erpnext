@@ -6,6 +6,13 @@
             "ssh_user": "you",
             "ssh_port": "22",
             "identity_file": "id_rsa"
+        },
+        {
+            "host_alias": "erp2nd",
+            "host_ip_or_name": "192.168.122.131",
+            "ssh_user": "boss",
+            "ssh_port": "22",
+            "identity_file": "id_rsa"
         }
     ]
 }
