@@ -13,11 +13,10 @@ USER_HOME = os.path.expanduser("~")
 # Set the project directory based on the current user's home
 PROJECT_DIR = os.path.join(USER_HOME, "projects/Logichem/ansible-dokploy-erpnext")
 
-# Validate environment dependencies (sshpass, SUDO_ASKPASS, sudo -A, PyYAML)
+# Validate environment dependencies, configurations, and required roles.
 validate_environment()
 
-# Load, interactively edit, and save configuration.
-# (Interactive editing now lets you update a host’s sudo password in the vault.)
+# Load, interactively edit, and save configuration (non-secret target details)
 config = load_config()
 config = edit_config(config)
 save_config(config)
@@ -26,6 +25,7 @@ save_config(config)
 for target in config.get("targets", []):
     print(f"\nProcessing target: {target['host_alias']} ({target['host_ip_or_name']})")
 
+    # Check SSH access; if not available, attempt configuration.
     if check_ssh_access(target):
         print(f"SSH access confirmed for {target['host_alias']}. Skipping SSH setup.")
     else:
@@ -35,7 +35,7 @@ for target in config.get("targets", []):
             print(f"ERROR: SSH setup failed for {target['host_alias']}. Skipping this target.")
             continue
 
-    # Update /etc/hosts with target information if needed (uses sudo -A internally)
+    # Update /etc/hosts on the control machine (using sudo -A)
     update_hosts_file(target)
 
 print("\nAnsible control machine setup is complete! 🚀")
