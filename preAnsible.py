@@ -3,7 +3,7 @@ import os
 import sys
 
 from env_validator import validate_environment
-from config_manager import load_config, save_config, edit_config
+from config_manager import load_all_configs, edit_config
 from ssh_manager import setup_ssh_access, check_ssh_access
 from host_manager import update_hosts_file
 from inventory_manager import generate_inventory
@@ -18,13 +18,15 @@ PROJECT_DIR = os.path.join(USER_HOME, "projects/Logichem/ansible-dokploy-erpnext
 # Validate environment dependencies, configurations, and required roles.
 validate_environment()
 
-# Load, interactively edit, and save configuration (non-secret target details)
-config = load_config()
-config = edit_config(config)
-save_config(config)
+# Interactively edit, and save configuration (non-secret target details)
+# configs = load_all_configs()
+configs = edit_config()
+# save_config(config)
+print(configs)
 
 # Process each target defined in the configuration.
-for target in config.get("targets", []):
+# for target in config.get("targets", []):
+for target in configs:
     print(f"\nProcessing target: {target['host_alias']} ({target['host_ip_or_name']})")
 
     # Check SSH access; if not available, attempt configuration.
@@ -41,7 +43,8 @@ for target in config.get("targets", []):
     update_hosts_file(target)
 
 obtain_roles()
-generate_inventory()
+
+# generate_inventory()
 groups_to_process = choose_inventory_groups()
 if groups_to_process:
     # Proceed with processing the selected groups.
@@ -56,3 +59,6 @@ else:
     print("No groups selected or exiting.")
 
 print("\nAnsible control machine setup is complete! 🚀")
+
+# print(f" -------------- CURTAILED -----------------")
+# sys.exit()

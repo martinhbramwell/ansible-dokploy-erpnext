@@ -5,14 +5,81 @@ import subprocess
 import glob
 import yaml
 
+
+def find_roles_in_data(data, roles_set):
+    """
+    Recursively traverse the YAML data structure to find role inclusion declarations.
+    When a key 'ansible.builtin.include_role' is found, if its value is a dict,
+    the function extracts the role name from the 'name' key and adds it to roles_set.
+    """
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key == "ansible.builtin.include_role":
+                if isinstance(value, dict):
+                    role_name = value.get("name")
+                    if role_name:
+                        roles_set.add(role_name)
+                elif isinstance(value, str):
+                    roles_set.add(value)
+            else:
+                find_roles_in_data(value, roles_set)
+    elif isinstance(data, list):
+        for element in data:
+            find_roles_in_data(element, roles_set)
+
 def obtain_roles():
     """
     Searches all YAML files in the "playbooks" directory for any occurrences
     of a "roles:" key, builds a set of the roles found, and installs each role
     via ansible-galaxy into ${HOME}/.ansible/roles.
     """
-    # (Code for obtain_roles as implemented previously)
-    pass  # Assume this function exists as defined earlier
+    roles_found = set()
+    playbooks_dir = "playbooks"
+    # Collect YAML files (both .yml and .yaml) in the playbooks directory.
+    yaml_files = glob.glob(os.path.join(playbooks_dir, "*.yml")) + glob.glob(os.path.join(playbooks_dir, "*.yaml"))
+    
+    if not yaml_files:
+        print("No YAML files found in the 'playbooks' directory.")
+        return
+
+    for yaml_file in yaml_files:
+        try:
+            with open(yaml_file, "r") as f:
+                print(f"Examining YAML file: {yaml_file}.")
+                # In case a file has multiple YAML documents, use safe_load_all.
+                docs = yaml.safe_load_all(f)
+                for doc in docs:
+                    if doc is not None:
+                        find_roles_in_data(doc, roles_found)
+        except Exception as e:
+            print(f"Error processing file '{yaml_file}': {e}")
+
+    if not roles_found:
+        print("No roles found in the playbooks directory.")
+        return
+
+    print("Roles found in playbooks:")
+    for role in sorted(roles_found):
+        print(f"  - {role}")
+
+    # Get the user's home directory.
+    home = os.environ.get("HOME")
+    if not home:
+        print("Error: HOME environment variable is not set.")
+        return
+
+    roles_path = os.path.join(home, ".ansible", "roles")
+    os.makedirs(roles_path, exist_ok=True)
+
+    # Install each role via ansible-galaxy.
+    for role in sorted(roles_found):
+        command = f"ansible-galaxy install {role} --roles-path {roles_path}"
+        print(f"Installing role: {role}")
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Error installing {role}:\n{result.stderr}")
+        else:
+            print(f"Successfully installed {role}")
 
 def choose_inventory_groups():
     """
