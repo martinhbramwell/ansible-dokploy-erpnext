@@ -6,6 +6,8 @@ from env_validator import validate_environment
 from config_manager import load_config, save_config, edit_config
 from ssh_manager import setup_ssh_access, check_ssh_access
 from host_manager import update_hosts_file
+from inventory_manager import generate_inventory
+from ansible_manager import obtain_roles, choose_inventory_groups, run_group_playbooks
 
 # Use current user's home directory
 USER_HOME = os.path.expanduser("~")
@@ -37,5 +39,20 @@ for target in config.get("targets", []):
 
     # Update /etc/hosts on the control machine (using sudo -A)
     update_hosts_file(target)
+
+obtain_roles()
+generate_inventory()
+groups_to_process = choose_inventory_groups()
+if groups_to_process:
+    # Proceed with processing the selected groups.
+    print("Processing groups:", groups_to_process)
+
+    if groups_to_process:
+        run_group_playbooks(groups_to_process)
+    else:
+        print("No groups selected or exiting.")
+
+else:
+    print("No groups selected or exiting.")
 
 print("\nAnsible control machine setup is complete! 🚀")

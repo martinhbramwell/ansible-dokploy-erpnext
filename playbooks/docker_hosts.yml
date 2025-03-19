@@ -1,0 +1,7 @@
+---
+- name: Prepare Docker Hosts
+  hosts: docker_hosts
+  become: true
+  tasks:
+    - import_tasks: install-hardening-tasks.yml
+    - import_tasks: install-docker-tasks.yml

@@ -1,6 +1,7 @@
 ### Project specific
 
-group_vars/all/vault.yml
+group_vars
+host_vars
 setup_config.json
 
 ### Python generic

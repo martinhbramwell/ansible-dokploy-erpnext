@@ -1,0 +1,4 @@
+---
+- name: Configure Docker using bsmeding.docker
+  ansible.builtin.include_role:
+    name: bsmeding.docker

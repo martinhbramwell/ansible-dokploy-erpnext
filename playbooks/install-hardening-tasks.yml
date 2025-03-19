@@ -1,0 +1,76 @@
+---
+# Tasks to harden an Ubuntu server
+
+- name: Update apt cache and upgrade packages
+  ansible.builtin.apt:
+    update_cache: yes
+    upgrade: dist
+
+- name: Install essential security packages
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - fail2ban
+    state: present
+
+- name: Set UFW default policy for incoming connections to deny
+  ansible.builtin.ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
+
+- name: Set UFW default policy for outgoing connections to allow
+  ansible.builtin.ufw:
+    state: enabled
+    policy: allow
+    direction: outgoing
+
+- name: Allow SSH through UFW
+  ansible.builtin.ufw:
+    rule: allow
+    port: 22
+    proto: tcp
+
+- name: Harden SSH configuration - disable root login
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^PermitRootLogin'
+    line: 'PermitRootLogin no'
+    state: present
+    backup: yes
+
+- name: Harden SSH configuration - disable password authentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^PasswordAuthentication'
+    line: 'PasswordAuthentication no'
+    state: present
+    backup: yes
+
+- name: Restart SSH service to apply configuration changes
+  ansible.builtin.service:
+    name: ssh
+    state: restarted
+
+- name: Apply sysctl network hardening settings
+  ansible.builtin.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  loop:
+    - { name: 'net.ipv4.ip_forward', value: '0' }
+    - { name: 'net.ipv4.conf.all.accept_source_route', value: '0' }
+    - { name: 'net.ipv4.conf.all.accept_redirects', value: '0' }
+    - { name: 'net.ipv4.conf.all.send_redirects', value: '0' }
+
+- name: Remove unused packages
+  ansible.builtin.apt:
+    autoremove: yes
+    purge: yes
+
+- name: Ensure fail2ban is running and enabled
+  ansible.builtin.service:
+    name: fail2ban
+    state: started
+    enabled: yes
