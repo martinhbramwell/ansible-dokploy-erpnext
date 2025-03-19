@@ -2,11 +2,25 @@
 import os
 import subprocess
 import yaml
+import json
 
 # Directory where host-specific variables are stored.
 HOST_VARS_DIR = "host_vars"
 # Path to the vault password file (adjust as needed).
 VAULT_PASS_FILE = os.path.expanduser("~/.ssh/secrets/.vault_pass")
+# Path to the configuration schema JSON file.
+SCHEMA_FILE = "config_schema.json"
+
+def load_schema():
+    """
+    Loads and returns the configuration schema from SCHEMA_FILE.
+    The schema defines the available configuration keys, full names, and default values.
+    """
+    if not os.path.exists(SCHEMA_FILE):
+        print(f"Schema file {SCHEMA_FILE} not found.")
+        return {}
+    with open(SCHEMA_FILE, "r") as f:
+        return json.load(f)
 
 def load_host_config(host):
     """
@@ -73,10 +87,13 @@ def load_all_configs():
 def edit_config():
     """
     Provides an interactive command-line interface to view, add, or edit host configurations.
-    Non-secret parameters (host alias, IP, SSH user, port, identity file) are edited here.
-    When prompted, the user may choose to update the sudo password via vault_manager.
+    It uses the schema (loaded from config_schema.json) to prompt for each parameter.
     Returns a list of host configuration dictionaries.
     """
+    schema = load_schema()
+    if not schema:
+        print("No schema loaded; cannot proceed.")
+        return []
     configs = load_all_configs()
     while True:
         print("\nCurrent Hosts:")
@@ -94,15 +111,23 @@ def edit_config():
             break
         elif choice == "n":
             new_conf = {}
-            new_conf["host_alias"] = input("Enter alias name: ").strip()
-            new_conf["host_ip_or_name"] = input("Enter IP or domain name: ").strip()
-            new_conf["ssh_user"] = input("Enter SSH username: ").strip()
-            new_conf["ansible_become_pass"] = input("Enter sudoer user password: ").strip()
-            new_conf["ssh_port"] = input("Enter SSH port (default 22): ").strip() or "22"
-            new_conf["identity_file"] = input("Enter SSH identity file name (default id_rsa): ").strip() or "id_rsa"
-            # Save new configuration
-            save_host_config(new_conf["host_alias"], new_conf)
-            configs.append(new_conf)
+            for key, meta in schema.items():
+                full_name = meta.get("full_name", key)
+                default_val = meta.get("default", "")
+                prompt = f"Enter {full_name}"
+                if default_val:
+                    prompt += f" [{default_val}]"
+                prompt += ": "
+                value = input(prompt).strip()
+                if not value:
+                    value = default_val
+                new_conf[key] = value
+            # Save new configuration using the host_alias as filename.
+            if "host_alias" in new_conf and new_conf["host_alias"]:
+                save_host_config(new_conf["host_alias"], new_conf)
+                configs.append(new_conf)
+            else:
+                print("host_alias is required; skipping entry.")
         else:
             try:
                 index = int(choice) - 1
@@ -111,16 +136,13 @@ def edit_config():
                     continue
                 conf = configs[index]
                 print(f"\nEditing host: {conf.get('host_alias')}")
-                conf["host_alias"] = input(f"Enter alias name [{conf.get('host_alias')}]: ").strip() or conf.get("host_alias")
-                conf["host_ip_or_name"] = input(f"Enter IP or domain name [{conf.get('host_ip_or_name')}]: ").strip() or conf.get("host_ip_or_name")
-                conf["ssh_user"] = input(f"Enter SSH username [{conf.get('ssh_user')}]: ").strip() or conf.get("ssh_user")
-                conf["ansible_become_pass"] = input(f"Enter sudoer user password [{conf.get('ansible_become_pass')}]: ").strip() or conf.get("ansible_become_pass")
-                conf["ssh_port"] = input(f"Enter SSH port [{conf.get('ssh_port')}]: ").strip() or conf.get("ssh_port")
-                conf["identity_file"] = input(f"Enter SSH identity file name [{conf.get('identity_file')}]: ").strip() or conf.get("identity_file")
-                # update_choice = input(f"Do you want to update the sudo password for '{conf.get('host_alias')}'? (y/N): ").strip().lower()
-                # if update_choice == 'y':
-                #     from vault_manager import update_vault_for_target
-                #     update_vault_for_target(conf)
+                for key, meta in schema.items():
+                    full_name = meta.get("full_name", key)
+                    current_val = conf.get(key, meta.get("default", ""))
+                    prompt = f"Enter {full_name} [{current_val}]: "
+                    new_val = input(prompt).strip()
+                    if new_val:
+                        conf[key] = new_val
                 # Save updated configuration
                 save_host_config(conf["host_alias"], conf)
                 configs[index] = conf

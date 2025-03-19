@@ -1,0 +1,4 @@
+---
+- name: Configure Wireguard using 
+  ansible.builtin.include_role:
+    name: ansible-role-wireguard

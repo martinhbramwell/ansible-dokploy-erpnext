@@ -1,0 +1,26 @@
+{
+    "host_alias": {
+        "full_name": "Host Alias",
+        "default": ""
+    },
+    "host_ip_or_name": {
+        "full_name": "IP or Domain Name",
+        "default": ""
+    },
+    "ssh_user": {
+        "full_name": "SSH Username",
+        "default": "ubuntu"
+    },
+    "ansible_become_pass": {
+        "full_name": "Sudo Password",
+        "default": ""
+    },
+    "ssh_port": {
+        "full_name": "SSH Port",
+        "default": "22"
+    },
+    "identity_file": {
+        "full_name": "SSH Identity File Name",
+        "default": "id_rsa"
+    }
+}
