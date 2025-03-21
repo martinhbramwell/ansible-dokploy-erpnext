@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import os
+import json
 import subprocess
 import yaml
-import json
+import importlib
 
 # Directory where host-specific variables are stored.
 HOST_VARS_DIR = "host_vars"
@@ -14,7 +15,8 @@ SCHEMA_FILE = "config_schema.json"
 def load_schema():
     """
     Loads and returns the configuration schema from SCHEMA_FILE.
-    The schema defines the available configuration keys, full names, and default values.
+    The schema defines available configuration keys, their full names,
+    default values, and the name of the handler function to prompt for a value.
     """
     if not os.path.exists(SCHEMA_FILE):
         print(f"Schema file {SCHEMA_FILE} not found.")
@@ -29,7 +31,7 @@ def load_host_config(host):
     """
     host_file = os.path.join(HOST_VARS_DIR, f"{host}.yml")
     if not os.path.exists(host_file):
-        return None
+        return {}
     try:
         result = subprocess.run(
             ["ansible-vault", "view", host_file, "--vault-password-file", VAULT_PASS_FILE],
@@ -39,18 +41,18 @@ def load_host_config(host):
         return data if data is not None else {}
     except subprocess.CalledProcessError as e:
         print(f"Error decrypting {host_file}: {e.stderr}")
-        return None
+        return {}
 
 def save_host_config(host, config):
     """
     Writes the given host configuration dictionary to host_vars/<host>.yml in plaintext,
-    then encrypts it using ansible-vault with the specified vault-id.
+    then encrypts it using ansible-vault with vault-id "default".
     """
     os.makedirs(HOST_VARS_DIR, exist_ok=True)
     host_file = os.path.join(HOST_VARS_DIR, f"{host}.yml")
     # Dump config to plaintext YAML.
     with open(host_file, "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, Dumper=yaml.SafeDumper, default_style='"')
     # Encrypt the file using ansible-vault with a vault-id of "default".
     try:
         subprocess.run(
@@ -87,13 +89,22 @@ def load_all_configs():
 def edit_config():
     """
     Provides an interactive command-line interface to view, add, or edit host configurations.
-    It uses the schema (loaded from config_schema.json) to prompt for each parameter.
+    It uses a schema (loaded from config_schema.json) to prompt for each parameter.
+    For each key defined in the schema, a handler function (specified by the schema)
+    is dynamically loaded from the 'handlers' module and called to prompt for a new value.
     Returns a list of host configuration dictionaries.
     """
     schema = load_schema()
     if not schema:
         print("No schema loaded; cannot proceed.")
         return []
+    # Import the handlers module dynamically.
+    try:
+        handlers_module = importlib.import_module("handlers")
+    except ImportError as e:
+        print("Error: Could not import handlers module.", e)
+        return []
+
     configs = load_all_configs()
     while True:
         print("\nCurrent Hosts:")
@@ -114,14 +125,10 @@ def edit_config():
             for key, meta in schema.items():
                 full_name = meta.get("full_name", key)
                 default_val = meta.get("default", "")
-                prompt = f"Enter {full_name}"
-                if default_val:
-                    prompt += f" [{default_val}]"
-                prompt += ": "
-                value = input(prompt).strip()
-                if not value:
-                    value = default_val
-                new_conf[key] = value
+                handler_name = meta.get("handler", "edit_string")
+                handler_func = getattr(handlers_module, handler_name)
+                new_val = handler_func(None, default_val, full_name)
+                new_conf[key] = new_val
             # Save new configuration using the host_alias as filename.
             if "host_alias" in new_conf and new_conf["host_alias"]:
                 save_host_config(new_conf["host_alias"], new_conf)
@@ -139,11 +146,10 @@ def edit_config():
                 for key, meta in schema.items():
                     full_name = meta.get("full_name", key)
                     current_val = conf.get(key, meta.get("default", ""))
-                    prompt = f"Enter {full_name} [{current_val}]: "
-                    new_val = input(prompt).strip()
-                    if new_val:
-                        conf[key] = new_val
-                # Save updated configuration
+                    handler_name = meta.get("handler", "edit_string")
+                    handler_func = getattr(handlers_module, handler_name)
+                    new_val = handler_func(current_val, meta.get("default", ""), full_name)
+                    conf[key] = new_val
                 save_host_config(conf["host_alias"], conf)
                 configs[index] = conf
             except (ValueError, IndexError):

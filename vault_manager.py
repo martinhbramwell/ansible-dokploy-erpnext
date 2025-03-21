@@ -26,12 +26,23 @@ def ensure_vault_password():
             f.write(vault_password + "\n")
         os.chmod(VAULT_PASS_FILE, 0o600)
 
-def load_vault_data():
-    """Return a dictionary from vault.yml if it exists, else an empty dict."""
-    if os.path.exists(VAULT_FILE):
+def load_vault_data(host_alias=None):
+    """
+    If host_alias is None, loads and returns a dictionary from VAULT_FILE.
+    Otherwise, loads and returns a dictionary from host_vars/<host_alias>.yml.
+    Returns an empty dict if the file doesn't exist.
+    """
+    import os, subprocess, yaml, sys
+    
+    if host_alias is None:
+        file_to_load = VAULT_FILE  # Global vault file
+    else:
+        file_to_load = os.path.join("host_vars", f"{host_alias}.yml")
+    
+    if os.path.exists(file_to_load):
         try:
             result = subprocess.run(
-                ["ansible-vault", "view", VAULT_FILE, "--vault-password-file", VAULT_PASS_FILE],
+                ["ansible-vault", "view", file_to_load, "--vault-password-file", VAULT_PASS_FILE],
                 capture_output=True, text=True, check=True
             )
             data = yaml.safe_load(result.stdout)

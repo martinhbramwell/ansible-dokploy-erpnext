@@ -1,6 +1,7 @@
 import os
 import subprocess
 import tempfile
+import json
 
 # Use current user's home directory
 USER_HOME = os.path.expanduser("~")
@@ -55,8 +56,9 @@ def push_ssh_key(target):
         print("Error: Could not import vault_manager.")
         return
 
-    vault_data = load_vault_data()
-    key = target.get("host_alias", target.get("host_ip_or_name"))
+    key = "ansible_become_pass"
+
+    vault_data = load_vault_data(target['host_alias'])
     if key not in vault_data:
         print(f"Error: No password for '{key}' found in the vault.")
         return
